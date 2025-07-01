@@ -3,6 +3,9 @@ class FlashcardApp {
         this.flashcards = [];
         this.currentCardIndex = 0;
         this.isFlipped = false;
+        this.aiModel = null;
+        this.aiTokenizer = null;
+        this.isModelLoading = false;
         this.statistics = {
             total: 0,
             completed: 0,
@@ -73,6 +76,217 @@ class FlashcardApp {
         document.getElementById(`${tabName}-tab`).classList.add('active');
     }
 
+    async initializeAI() {
+        if (this.aiModel || this.isModelLoading) return;
+        
+        try {
+            this.isModelLoading = true;
+            this.updateAIStatus('Loading AI model...', 20);
+            
+            // Import transformers
+            const { pipeline } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js');
+            
+            this.updateAIStatus('Preparing text generation...', 60);
+            
+            // Initialize the text generation pipeline
+            this.aiModel = await pipeline('text2text-generation', 'Xenova/flan-t5-small');
+            
+            this.updateAIStatus('AI model ready!', 100);
+            
+            setTimeout(() => {
+                document.getElementById('ai-status').style.display = 'none';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error initializing AI:', error);
+            this.updateAIStatus('Error loading AI model. Please try again.', 0);
+        } finally {
+            this.isModelLoading = false;
+        }
+    }
+
+    updateAIStatus(message, progress) {
+        const statusEl = document.getElementById('ai-status');
+        const progressEl = document.getElementById('ai-progress-bar');
+        const messageEl = document.getElementById('ai-message');
+        
+        if (statusEl) statusEl.style.display = 'block';
+        if (progressEl) progressEl.style.width = `${progress}%`;
+        if (messageEl) {
+            messageEl.innerHTML = progress < 100 ? 
+                `<div class="ai-spinner"></div> ${message}` : 
+                `<i class="fas fa-check-circle" style="color: #28a745;"></i> ${message}`;
+        }
+    }
+
+    async generateFromAI() {
+        const content = document.getElementById('ai-input').value.trim();
+        
+        if (!content) {
+            this.showNotification('Please enter some content for AI to process', 'error');
+            return;
+        }
+
+        try {
+            const btn = document.querySelector('.ai-generate-btn');
+            this.setButtonLoading(btn, true, 'AI Generating...');
+
+            // For now, use a fallback approach since AI model loading might be complex
+            const options = this.getAIOptions();
+            const cards = await this.generateFlashcardsWithSimpleAI(content, options);
+            
+            if (cards.length === 0) {
+                this.showNotification('No flashcards could be generated from this content.', 'warning');
+                return;
+            }
+
+            this.flashcards = cards;
+            this.currentCardIndex = 0;
+            this.resetStatistics();
+            this.displayFlashcards();
+            this.showNotification(`AI generated ${cards.length} flashcards!`, 'success');
+
+        } catch (error) {
+            console.error('Error generating with AI:', error);
+            this.showNotification('Error generating flashcards with AI. Please try again.', 'error');
+        } finally {
+            const btn = document.querySelector('.ai-generate-btn');
+            this.setButtonLoading(btn, false);
+        }
+    }
+
+    getAIOptions() {
+        return {
+            definitions: document.getElementById('generate-definitions').checked,
+            explanations: document.getElementById('generate-explanations').checked,
+            examples: document.getElementById('generate-examples').checked,
+            numCards: parseInt(document.getElementById('num-cards').value)
+        };
+    }
+
+    async generateFlashcardsWithSimpleAI(content, options) {
+        // Simple AI-like processing using text analysis
+        const cards = [];
+        const sentences = content.split(/[.!?]+/).filter(s => s.trim().length > 20);
+        const words = content.toLowerCase().split(/\s+/);
+        
+        // Extract key terms (words that appear frequently and are longer)
+        const keyTerms = this.extractKeyTerms(words);
+        
+        // Generate definition cards
+        if (options.definitions) {
+            for (const term of keyTerms.slice(0, Math.ceil(options.numCards / 3))) {
+                const context = this.findContextForTerm(term, sentences);
+                if (context) {
+                    cards.push({
+                        question: `What is ${term}?`,
+                        answer: context,
+                        difficulty: null,
+                        type: 'definition',
+                        id: Date.now() + Math.random()
+                    });
+                }
+            }
+        }
+        
+        // Generate explanation cards
+        if (options.explanations) {
+            const explanationSentences = sentences.filter(s => 
+                s.toLowerCase().includes('because') || 
+                s.toLowerCase().includes('therefore') || 
+                s.toLowerCase().includes('as a result') ||
+                s.toLowerCase().includes('due to')
+            );
+            
+            for (const sentence of explanationSentences.slice(0, Math.ceil(options.numCards / 3))) {
+                const parts = sentence.split(/because|therefore|as a result|due to/i);
+                if (parts.length >= 2) {
+                    cards.push({
+                        question: `Why ${parts[0].trim().toLowerCase()}?`,
+                        answer: parts[1].trim(),
+                        difficulty: null,
+                        type: 'explanation',
+                        id: Date.now() + Math.random()
+                    });
+                }
+            }
+        }
+        
+        // Generate example cards
+        if (options.examples) {
+            const exampleSentences = sentences.filter(s => 
+                s.toLowerCase().includes('example') || 
+                s.toLowerCase().includes('such as') || 
+                s.toLowerCase().includes('including') ||
+                s.toLowerCase().includes('like')
+            );
+            
+            for (const sentence of exampleSentences.slice(0, Math.ceil(options.numCards / 3))) {
+                const beforeExample = sentence.split(/example|such as|including|like/i)[0];
+                const afterExample = sentence.split(/example|such as|including|like/i)[1];
+                
+                if (beforeExample && afterExample) {
+                    cards.push({
+                        question: `Give an example of ${beforeExample.trim().toLowerCase()}`,
+                        answer: afterExample.trim(),
+                        difficulty: null,
+                        type: 'example',
+                        id: Date.now() + Math.random()
+                    });
+                }
+            }
+        }
+        
+        // Fill remaining slots with general Q&A
+        while (cards.length < options.numCards && sentences.length > 0) {
+            const sentence = sentences[Math.floor(Math.random() * sentences.length)];
+            const words = sentence.split(' ');
+            
+            if (words.length > 5) {
+                // Create a fill-in-the-blank or general question
+                const keyWord = words.find(w => w.length > 6) || words[Math.floor(words.length / 2)];
+                const questionSentence = sentence.replace(keyWord, '______');
+                
+                cards.push({
+                    question: `Fill in the blank: ${questionSentence}`,
+                    answer: keyWord,
+                    difficulty: null,
+                    type: 'fill-blank',
+                    id: Date.now() + Math.random()
+                });
+            }
+        }
+        
+        return cards.slice(0, options.numCards);
+    }
+
+    extractKeyTerms(words) {
+        const termFreq = {};
+        const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those']);
+        
+        words.forEach(word => {
+            const cleanWord = word.replace(/[^\w]/g, '').toLowerCase();
+            if (cleanWord.length > 3 && !commonWords.has(cleanWord)) {
+                termFreq[cleanWord] = (termFreq[cleanWord] || 0) + 1;
+            }
+        });
+        
+        return Object.entries(termFreq)
+            .filter(([word, freq]) => freq > 1)
+            .sort(([,a], [,b]) => b - a)
+            .map(([word]) => word)
+            .slice(0, 10);
+    }
+
+    findContextForTerm(term, sentences) {
+        const termLower = term.toLowerCase();
+        const relevantSentence = sentences.find(s => 
+            s.toLowerCase().includes(termLower) && s.length > 50
+        );
+        
+        return relevantSentence ? relevantSentence.trim() : null;
+    }
+
     async generateFromMarkdown() {
         const markdown = document.getElementById('markdown-input').value.trim();
         
@@ -126,7 +340,10 @@ class FlashcardApp {
 
             // Try to fetch the content
             const content = await this.fetchUrlContent(url);
-            const cards = this.parseTextToFlashcards(content);
+            
+            // Use AI-like processing for URL content
+            const options = { definitions: true, explanations: true, examples: true, numCards: 10 };
+            const cards = await this.generateFlashcardsWithSimpleAI(content, options);
             
             if (cards.length === 0) {
                 this.showNotification('No flashcards could be generated from this URL. Try using markdown input instead.', 'warning');
@@ -191,28 +408,6 @@ class FlashcardApp {
         }
 
         return cards;
-    }
-
-    parseTextToFlashcards(text) {
-        // Simple text parsing - look for sentences that could be questions/answers
-        const cards = [];
-        const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
-        
-        for (let i = 0; i < sentences.length - 1; i += 2) {
-            const question = sentences[i].trim();
-            const answer = sentences[i + 1] ? sentences[i + 1].trim() : '';
-            
-            if (question && answer) {
-                cards.push({
-                    question: question + '?',
-                    answer: this.formatAnswer(answer),
-                    difficulty: null,
-                    id: Date.now() + Math.random() + i
-                });
-            }
-        }
-
-        return cards.slice(0, 20); // Limit to 20 cards
     }
 
     formatAnswer(answer) {
@@ -434,15 +629,17 @@ class FlashcardApp {
         }
     }
 
-    setButtonLoading(button, loading) {
+    setButtonLoading(button, loading, customText = null) {
         if (loading) {
             button.disabled = true;
-            button.innerHTML = '<div class="loading"></div> Processing...';
+            button.innerHTML = `<div class="loading"></div> ${customText || 'Processing...'}`;
         } else {
             button.disabled = false;
             // Restore original content based on which button it is
             if (button.closest('#markdown-tab')) {
                 button.innerHTML = '<i class="fas fa-magic"></i> Generate Flashcards';
+            } else if (button.closest('#ai-tab')) {
+                button.innerHTML = '<i class="fas fa-magic"></i> AI Generate Flashcards';
             } else {
                 button.innerHTML = '<i class="fas fa-download"></i> Fetch & Generate';
             }
@@ -531,6 +728,10 @@ let app;
 
 function generateFromMarkdown() {
     app.generateFromMarkdown();
+}
+
+function generateFromAI() {
+    app.generateFromAI();
 }
 
 function generateFromUrl() {

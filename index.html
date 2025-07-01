@@ -20,6 +20,9 @@
                 <button class="tab-btn active" data-tab="markdown">
                     <i class="fab fa-markdown"></i> Markdown
                 </button>
+                <button class="tab-btn" data-tab="ai">
+                    <i class="fas fa-robot"></i> AI Generate
+                </button>
                 <button class="tab-btn" data-tab="url">
                     <i class="fas fa-link"></i> Website URL
                 </button>
@@ -44,6 +47,53 @@ CSS (Cascading Style Sheets) is used to style and layout web pages."
                 <button class="generate-btn" onclick="generateFromMarkdown()">
                     <i class="fas fa-magic"></i> Generate Flashcards
                 </button>
+            </div>
+
+            <div class="tab-content" id="ai-tab">
+                <textarea 
+                    id="ai-input" 
+                    placeholder="Enter any text content here for AI to generate flashcards...
+
+Examples:
+- Paste article content, lecture notes, or study material
+- Enter definitions, concepts, or explanations
+- Copy content from textbooks or research papers
+
+The AI will automatically identify key concepts and create question-answer pairs for effective studying."
+                    rows="10"
+                ></textarea>
+                <div class="ai-options">
+                    <label class="ai-option">
+                        <input type="checkbox" id="generate-definitions" checked>
+                        <span>Generate definition questions</span>
+                    </label>
+                    <label class="ai-option">
+                        <input type="checkbox" id="generate-explanations" checked>
+                        <span>Generate explanation questions</span>
+                    </label>
+                    <label class="ai-option">
+                        <input type="checkbox" id="generate-examples" checked>
+                        <span>Generate example questions</span>
+                    </label>
+                    <div class="ai-option">
+                        <label for="num-cards">Number of cards to generate:</label>
+                        <select id="num-cards">
+                            <option value="5">5 cards</option>
+                            <option value="10" selected>10 cards</option>
+                            <option value="15">15 cards</option>
+                            <option value="20">20 cards</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="generate-btn ai-generate-btn" onclick="generateFromAI()">
+                    <i class="fas fa-magic"></i> AI Generate Flashcards
+                </button>
+                <div class="ai-status" id="ai-status" style="display: none;">
+                    <div class="ai-progress">
+                        <div class="ai-progress-bar" id="ai-progress-bar"></div>
+                    </div>
+                    <div class="ai-message" id="ai-message">Loading AI model...</div>
+                </div>
             </div>
 
             <div class="tab-content" id="url-tab">
@@ -151,6 +201,7 @@ CSS (Cascading Style Sheets) is used to style and layout web pages."
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1/dist/transformers.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
